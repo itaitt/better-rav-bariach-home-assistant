@@ -5,13 +5,13 @@ import logging
 
 from homeassistant.components.lock import LockEntity
 from homeassistant.config_entries import ConfigEntry, ConfigEntryDisabler
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import ConfigEntryNotReady, HomeAssistantError
-from homeassistant.helpers.dispatcher import dispatcher_send
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.restore_state import RestoreEntity
 
 from .const import DOMAIN, FULLFILMENT_API_URI, LockIsJammed, LockStatus, OnlineStatus
+from .entity import RavBariachEntity
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -35,52 +35,26 @@ async def async_setup_entry(
     async_add_entities(entities)
 
 
-class RavBariachLock(LockEntity, RestoreEntity):
+class RavBariachLock(RavBariachEntity, LockEntity, RestoreEntity):
 
-    _attr_has_entity_name = True
     _attr_name = None
 
     def __init__(self, session, gateway, data, entry):
         """Initializing properties."""
+        super().__init__(gateway, data)
         self._session = session
-        self._gateway = gateway
-        self._data = data
-        self._device_id = str(data.get("deviceId"))
         self._attr_unique_id = f"rav_bariach_lock_{self._device_id}"
         self._is_locking = False
         self._is_unlocking = False
         self.entry = entry
 
-    async def async_added_to_hass(self) -> None:
-        """Register callbacks when entity is added to Home Assistant."""
-        await super().async_added_to_hass()
-
-        self.async_on_remove(
-            self._gateway.register_listener(self._device_id, self._handle_update)
-        )
-
+    @callback
     def _handle_update(self, msg_data):
         """Handle updated state data received from WebSocket."""
         if msg_data:
-            self._data.update(msg_data)
             self._is_locking = False
             self._is_unlocking = False
-
-            self.async_write_ha_state()
-            dispatcher_send(self.hass, f"update_{self._device_id}", msg_data)
-
-    @property
-    def device_info(self):
-        """Return device registry information for Home Assistant."""
-        return {
-            "identifiers": {(DOMAIN, self._device_id)},
-            "name": self._data.get("deviceName", "Rav Bariach Lock"),
-            "manufacturer": "Rav Bariach Smart Lock and Security Systems",
-            "model": self._data.get("deviceModel"),
-            "sw_version": self._data.get("firmwareVersion"),
-            "hw_version": self._data.get("hardwareVersion"),
-            "suggested_area": self._data.get("deviceName"),
-        }
+            super()._handle_update(msg_data)
 
     @property
     def code_format(self) -> str | None:
@@ -88,11 +62,6 @@ class RavBariachLock(LockEntity, RestoreEntity):
         if self.is_locked:
             return r"^\d*$"
         return None
-
-    @property
-    def should_poll(self) -> bool:
-        """Disable polling. Websocket drives updates."""
-        return False
 
     @property
     def is_locking(self) -> bool:

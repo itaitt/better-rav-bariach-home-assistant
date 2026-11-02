@@ -112,6 +112,7 @@ class RavBariachGateway:
 
     async def _handle_message_async(self, data: str):
         """Process incoming WebSocket messages without blocking the event loop."""
+        _LOGGER.debug("WebSocket message: %s", data)
 
         json_data = await self.hass.async_add_executor_job(parse_json_safe, data)
 
